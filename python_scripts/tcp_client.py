@@ -20,80 +20,79 @@ import struct
 import signal
 import time
 
-from kinMsg_pb2 import request,response
+from kinMsg_pb2 import request, response
 
 import numpy as np
 
 
+class tcp_client:
 
-class tcp_client: 
+    def __init__(self):
+        # intialize messages
+        self.message = request()
+        self.message.endconnection = False
+        self.data_m = response()
 
-	def __init__(self):
-		# intialize messages
-		self.message = request()
-		self.message.endconnection = False
-		self.data_m = response()
+        # signal handler for ctrl+c
+        signal.signal(signal.SIGINT, self.signal_handler)
 
-		# signal handler for ctrl+c
-		signal.signal(signal.SIGINT, self.signal_handler)
+        # initialize connection, and run the main program
+        self.initConnection()
 
-		# initialize connection, and run the main program
-		self.initConnection()
+    def initConnection(self):
+        TCP_IP = ''
+        TCP_PORT = 3000
+        BUFFER_SIZE = 1024
 
+        self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.client_socket.connect((TCP_IP, TCP_PORT))
+        self.connection = True
 
-	def initConnection(self):
-		TCP_IP = ''
-		TCP_PORT = 3000
-		BUFFER_SIZE = 1024
+        print ("Connection established, starting main loop")
 
-		self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		self.client_socket.connect((TCP_IP, TCP_PORT))
-		self.connection = True
+        self.run()
 
-		print "Connection established, starting main loop"
+    def signal_handler(self, signal, frame):
 
-		self.run()
+        print ("SIGINT caught, exiting ...")
+        if self.connection:
+            self.connection = False
 
+    def run(self):
+        while (self.connection):
+            time.sleep(5)
+            # send request
+            self.message.endconnection = False
+            s = self.message.SerializeToString()
 
-	def signal_handler(self, signal, frame):
+            totallen = 4 + self.message.ByteSize()
 
-		print "SIGINT caught, exiting ..."
-		if self.connection:
-			self.connection = False
+            print(str.encode(str(totallen).zfill(4)))
+            print(type(s.decode('utf-8')))
+            tmp = str.encode(str(totallen).zfill(4)) + s
+            print(type(tmp))
+            self.client_socket.sendall(tmp)
 
-	def run(self):
-		while (self.connection):
-	
-			# send request
-			self.message.endconnection = False
-			s = self.message.SerializeToString()
-			totallen = 4 + self.message.ByteSize()
-			self.client_socket.sendall(str(totallen).zfill(4) + s)
+            # get response from server with robot data
+            data_hdr = self.client_socket.recv(4)
+            sz = int(data_hdr)
+            data = self.client_socket.recv(sz)
+            self.data_m.ParseFromString(data)
 
-			# get response from server with robot data
-			data_hdr = self.client_socket.recv(4)
-			sz = int(data_hdr)
-			data = self.client_socket.recv(sz)
-			self.data_m.ParseFromString(data)
+            self.connection = not self.data_m.endconnection
 
-			self.connection = not self.data_m.endconnection
+            numpoints = self.data_m.shape.numpoints
+            P = np.array(self.data_m.shape.P._values)
+            x = np.array([el.x for el in P])
+            y = np.array([el.y for el in P])
+            z = np.array([el.z for el in P])
+            print (x)
+            print (y)
+            print (z)
 
-			numpoints = self.data_m.shape.numpoints
-			P = np.array(self.data_m.shape.P._values)
-			x = np.array([el.x for el in P])
-			y = np.array([el.y for el in P])
-			z = np.array([el.z for el in P])
-			print x
-			print y
-			print z
-
-		print "Closing socket ..."
-		self.client_socket.close()
+        print ("Closing socket ...")
+        self.client_socket.close()
 
 
 if __name__ == '__main__':
-	client = tcp_client()
-		
-	
-
-
+    client = tcp_client()
